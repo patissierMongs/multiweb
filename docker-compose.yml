@@ -79,7 +79,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./k8s/monitoring/prometheus-config.yml:/etc/prometheus/prometheus.yml
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     networks:
       - multiweb
@@ -120,8 +120,8 @@ services:
     image: grafana/promtail:3.0.0
     container_name: multiweb-promtail
     volumes:
-      - /var/log:/var/log:ro
-      - ./k8s/logging/promtail-config.yml:/etc/promtail/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/promtail.yml:/etc/promtail/config.yml
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
