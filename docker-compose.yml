@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: multiweb-postgres
+    environment:
+      POSTGRES_USER: multiweb
+      POSTGRES_PASSWORD: multiweb_password
+      POSTGRES_DB: multiweb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multiweb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - multiweb
+
+  # Redis Cache
+  redis:
+    image: redis:7.2-alpine
+    container_name: multiweb-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - multiweb
+
+  # FastAPI Application
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: multiweb-api
+    environment:
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=multiweb
+      - POSTGRES_PASSWORD=multiweb_password
+      - POSTGRES_DB=multiweb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app
+    networks:
+      - multiweb
+
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: multiweb-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - multiweb
+
+  # Grafana - Visualization
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: multiweb-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./analytics/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - multiweb
+
+  # Loki - Log Aggregation
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: multiweb-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - multiweb
+
+  # Promtail - Log Collection
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: multiweb-promtail
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/promtail.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - multiweb
+
+  # Tempo - Distributed Tracing
+  tempo:
+    image: grafana/tempo:2.5.0
+    container_name: multiweb-tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./k8s/monitoring/tempo-config.yml:/etc/tempo.yaml
+      - tempo_data:/tmp/tempo
+    ports:
+      - "3200:3200"   # tempo
+      - "4317:4317"   # otlp grpc
+      - "4318:4318"   # otlp http
+    networks:
+      - multiweb
+
+  # Nginx - Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: multiweb-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    networks:
+      - multiweb
+
+networks:
+  multiweb:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  tempo_data:
