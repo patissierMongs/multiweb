@@ -1,279 +1,155 @@
-# MultiWeb - Enterprise-Grade Marketplace DevOps Stack
+# MultiWeb
 
-> 당근마켓 수준의 중고거래 플랫폼을 위한 프로덕션급 DevOps 인프라 학습 프로젝트
+중고거래 마켓플레이스 API(Application Programming Interface)를 대상으로 모니터링·부하 테스트·데이터 분석을 연습하는 DevOps 학습 프로젝트입니다.
 
-## 🎯 프로젝트 목표
+[English](README.en.md) | **한국어**
 
-실제 운영 환경과 동일한 수준의 DevOps 스택을 구축하여:
-- **모니터링**: 실시간 메트릭, 로그, 분산 트레이싱
-- **확장성**: Kubernetes 기반 자동 스케일링
-- **관찰성**: 통합된 observability 스택
-- **데이터 분석**: 운영 데이터 수집 및 분석 연습
+![Swagger UI에서 데모 계정으로 로그인하고 상품 목록을 조회하는 과정](docs/images/login-flow.gif)
 
-## 🏗️ 아키텍처
+## 화면
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Users / Load Tests                      │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Nginx Ingress Controller                   │
-│                    (Reverse Proxy + SSL)                     │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        ▼                ▼                ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│   FastAPI    │  │   FastAPI    │  │   FastAPI    │
-│   Backend    │  │   Backend    │  │   Backend    │
-│  (Python)    │  │  (Python)    │  │  (Python)    │
-└──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-       │                 │                 │
-       └────────┬────────┴────────┬────────┘
-                ▼                 ▼
-         ┌─────────────┐   ┌─────────────┐
-         │ PostgreSQL  │   │    Redis    │
-         │  Database   │   │   Cache     │
-         └─────────────┘   └─────────────┘
+| API 문서 (Swagger UI) | 상품 목록 조회 결과 |
+|---|---|
+| ![API 문서](docs/images/api-docs.png) | ![상품 목록 응답](docs/images/products-list.png) |
 
-┌─────────────────────────────────────────────────────────────┐
-│                    Observability Stack                       │
-├─────────────────────────────────────────────────────────────┤
-│  Prometheus  │  Grafana  │  Loki  │  OpenTelemetry         │
-│  (Metrics)   │  (Viz)    │  (Logs)│  (Tracing)             │
-└─────────────────────────────────────────────────────────────┘
+`scripts/test-api.sh` 실행 결과:
 
-┌─────────────────────────────────────────────────────────────┐
-│                    Testing & Analysis                        │
-├─────────────────────────────────────────────────────────────┤
-│  Locust      │  Attack   │  Data      │  Jupyter           │
-│  (Load Test) │  Scripts  │  Collector │  Notebook          │
-└─────────────────────────────────────────────────────────────┘
-```
+![test-api.sh 실행 결과](docs/images/test-api-terminal.png)
 
-## 🛠️ 기술 스택 (2025년 최신)
+위 화면은 모두 이 저장소의 코드를 로컬 PostgreSQL·Redis에 연결해 실제로 실행한 결과이며, 데이터는 데모 계정과 예시 상품입니다.
 
-### Application Layer
-- **Backend**: FastAPI 0.115+ (Python 3.12)
-- **Database**: PostgreSQL 16
-- **Cache**: Redis 7.2
-- **Storage**: MinIO (S3-compatible)
+## 주요 기능
 
-### Infrastructure
-- **Orchestration**: Kubernetes 1.29+
-- **Reverse Proxy**: Nginx Ingress Controller
-- **Package Manager**: Helm 3
-- **Container Runtime**: containerd
+**마켓플레이스 API** (`app/`)
+- 회원가입, 로그인, JWT(JSON Web Token, JSON은 JavaScript Object Notation) 액세스·리프레시 토큰 발급
+- 상품 등록·조회·수정·삭제(소프트 삭제), 페이지 나누기, 카테고리·상태 필터, 제목·설명 검색
+- 거래 생성·조회 (구매자와 판매자만 조회 가능)
+- 사용자 간 메시지 보내기·목록 조회
+- 헬스 체크: `/health`, `/health/ready`(DB(Database)·Redis 연결 확인), `/health/live`
+- Prometheus 메트릭 노출: `/metrics`
+- structlog 기반 JSON 구조화 로그
 
-### Observability
-- **Metrics**: Prometheus + VictoriaMetrics
-- **Visualization**: Grafana 11
-- **Logging**: Loki + Promtail
-- **Tracing**: OpenTelemetry + Tempo
-- **APM**: Python instrumentations
+**인프라 구성 파일**
+- Docker Compose: API, PostgreSQL, Redis, Prometheus, Grafana, Loki, Promtail, Tempo, Nginx (`docker-compose.yml`)
+- Nginx 요청 속도 제한: API 10 r/s, 로그인 5 r/m (`docker/nginx.conf`)
+- Kubernetes 매니페스트: API Deployment와 HPA(Horizontal Pod Autoscaler), PostgreSQL, Redis, Ingress, Prometheus, Grafana, Loki, Promtail, Tempo (`k8s/`)
+- Kind/Minikube 로컬 클러스터 준비 스크립트 (`scripts/setup-k8s.sh`)
 
-### Testing & Load Generation
-- **Load Testing**: Locust (Python)
-- **Data Generation**: Faker, Mimesis
-- **Attack Simulation**: Custom Python scripts
+**테스트·분석 도구**
+- Locust 부하 테스트 시나리오 (`tests/locust/marketplace_load.py`)
+- 공격 시뮬레이션: HTTP(HyperText Transfer Protocol) 플러드, Slowloris, SQL(Structured Query Language) 인젝션, XSS(Cross-Site Scripting), 로그인 무차별 대입 (`tests/attacks/simulate_attacks.py`)
+- Prometheus 메트릭 수집기와 Jupyter 분석 노트북 (`analytics/`)
 
-### Data Analysis
-- **Analysis**: Jupyter Lab
-- **Libraries**: Pandas, NumPy, Matplotlib, Seaborn
-- **Workflow**: Prefect/Dagster (optional)
+기능별 구현 상태와 미완성 항목은 [진행 기록](docs/PROGRESS.md)에 정리했습니다.
 
-## 📁 프로젝트 구조
+## 사용 방법
 
-```
-multiweb/
-├── app/                          # FastAPI 애플리케이션
-│   ├── api/                      # API 엔드포인트
-│   ├── models/                   # 데이터베이스 모델
-│   ├── schemas/                  # Pydantic 스키마
-│   ├── services/                 # 비즈니스 로직
-│   ├── core/                     # 설정, 보안
-│   └── main.py                   # 앱 진입점
-├── k8s/                          # Kubernetes 매니페스트
-│   ├── base/                     # 기본 리소스
-│   ├── monitoring/               # Prometheus, Grafana
-│   ├── logging/                  # Loki, Promtail
-│   └── ingress/                  # Nginx Ingress
-├── helm/                         # Helm Charts
-│   └── multiweb/                 # 메인 차트
-├── tests/                        # 부하 및 공격 테스트
-│   ├── locust/                   # Locust 시나리오
-│   ├── attacks/                  # 공격 시뮬레이션
-│   └── synthetic/                # 합성 데이터 생성
-├── analytics/                    # 데이터 분석
-│   ├── notebooks/                # Jupyter notebooks
-│   ├── collectors/               # 메트릭 수집기
-│   └── dashboards/               # Grafana 대시보드
-├── docker/                       # Docker 설정
-│   └── docker-compose.yml        # 로컬 개발 환경
-├── scripts/                      # 유틸리티 스크립트
-│   ├── deploy.sh                 # 배포 스크립트
-│   ├── setup-k8s.sh              # K8s 초기 설정
-│   └── generate-data.py          # 데이터 생성
-└── docs/                         # 문서
-    ├── ARCHITECTURE.md           # 아키텍처 설명
-    ├── DEPLOYMENT.md             # 배포 가이드
-    └── MONITORING.md             # 모니터링 가이드
-```
+### 1. 로컬 실행 (Docker 없이, 위 화면을 만든 방법)
 
-## 🚀 빠른 시작
-
-### 1. 로컬 개발 환경 (Docker Compose)
+PostgreSQL 16과 Redis가 로컬에서 실행 중이어야 합니다. 설정 기본값은 사용자 `multiweb`, 비밀번호 `multiweb_password`, DB `multiweb`입니다 (`app/core/config.py`).
 
 ```bash
-# 전체 스택 시작
+# 1) 의존성 설치 (Python 3.12)
+python -m venv .venv && source .venv/bin/activate
+pip install -r app/requirements.txt
+
+# 2) 접속 대상 설정
+export POSTGRES_SERVER=localhost REDIS_HOST=localhost DEBUG=true
+
+# 3) 테이블·카테고리·데모 계정 생성 (기존 테이블을 지우고 다시 만듭니다)
+PYTHONPATH=. python scripts/init_db.py
+
+# 4) API 서버 실행
+uvicorn app.main:app --port 8000
+```
+
+`DEBUG=true`일 때만 `/docs`(Swagger UI)와 `/redoc`이 열립니다.
+
+### 2. 기본 사용 흐름
+
+1. 브라우저에서 `http://localhost:8000/docs`를 엽니다.
+2. `POST /api/v1/auth/login`에 데모 계정으로 로그인합니다.
+   ```json
+   { "email": "demo@multiweb.com", "password": "demo123!" }
+   ```
+3. 응답의 `access_token`을 오른쪽 위 **Authorize**에 붙여 넣습니다.
+4. `GET /api/v1/products/`로 상품을 조회하고, 자물쇠 표시가 있는 API(상품 등록, 거래, 메시지)를 호출합니다.
+
+명령줄에서 확인하려면:
+
+```bash
+./scripts/test-api.sh http://localhost:8000
+```
+
+### 3. Docker Compose
+
+```bash
 docker-compose up -d
-
-# 애플리케이션 접속
-# API: http://localhost:8000
-# Grafana: http://localhost:3000
-# Prometheus: http://localhost:9090
+# 또는 대화형 스크립트
+./scripts/quickstart.sh
 ```
 
-### 2. Kubernetes 클러스터 배포
+| 서비스 | 주소 |
+|---|---|
+| API | http://localhost:8000 |
+| Grafana | http://localhost:3000 (admin/admin) |
+| Prometheus | http://localhost:9090 |
+| Nginx | http://localhost:80 |
+
+이 환경에서는 Docker 데몬을 쓸 수 없어 Compose 실행은 확인하지 못했습니다. API 컨테이너의 모듈 경로 문제 등 확인된 사항은 [진행 기록](docs/PROGRESS.md)에 적었습니다.
+
+### 4. Kubernetes
 
 ```bash
-# Minikube 또는 Kind 클러스터 생성
-./scripts/setup-k8s.sh
-
-# Helm으로 전체 스택 배포
-helm install multiweb ./helm/multiweb
-
-# 또는 kubectl로 직접 배포
-kubectl apply -f k8s/base/
-kubectl apply -f k8s/monitoring/
-kubectl apply -f k8s/logging/
+cd scripts && ./setup-k8s.sh
 ```
 
-### 3. 부하 테스트 실행
+자세한 절차는 [배포 가이드](docs/DEPLOYMENT.md)를 참고하세요.
+
+### 5. 부하 테스트와 공격 시뮬레이션
 
 ```bash
-# Locust 부하 테스트
+pip install -r tests/locust/requirements.txt
 cd tests/locust
 locust -f marketplace_load.py --host=http://localhost:8000
+```
 
-# 공격 시뮬레이션
+```bash
+pip install -r tests/attacks/requirements.txt
 python tests/attacks/simulate_attacks.py
 ```
 
-### 4. 데이터 분석
+공격 시뮬레이션은 본인이 운영하는 로컬 환경에서만 실행하세요.
+
+### 6. 데이터 분석
 
 ```bash
-# Jupyter Lab 시작
-cd analytics
-jupyter lab
-
-# 메트릭 수집
-python collectors/collect_metrics.py
+pip install -r analytics/collectors/requirements.txt
+python analytics/collectors/collect_metrics.py   # Prometheus(localhost:9090)에서 수집
+jupyter lab analytics/notebooks/metrics_analysis.ipynb
 ```
 
-## 📊 모니터링 대시보드
+## 기술 스택
 
-접속 후 미리 구성된 대시보드들:
+| 영역 | 사용 기술 (저장소에 고정된 버전) |
+|---|---|
+| 언어 | Python 3.12 (`app/Dockerfile`) |
+| 웹 프레임워크 | FastAPI 0.115.0, Uvicorn 0.30.6, Pydantic 2.9.0, pydantic-settings 2.5.0 |
+| DB·ORM(Object-Relational Mapping) | PostgreSQL 16, SQLAlchemy 2.0.35 (asyncio), asyncpg 0.29.0 |
+| 캐시 | Redis 7.2, redis-py 5.1.0 |
+| 인증 | python-jose 3.3.0 (JWT), passlib 1.7.4 + bcrypt 4.2.0 |
+| 관측 | prometheus-fastapi-instrumentator 7.0.0, structlog 24.4.0, Prometheus v2.53.0, Grafana 11.0.0, Loki·Promtail 3.0.0, Tempo 2.5.0 |
+| 인프라 | Docker Compose, Nginx, Kubernetes (Deployment, HPA, Ingress, DaemonSet) |
+| 테스트·분석 | Locust 2.31.0, httpx 0.27.2, Faker 30.3.0, pandas 2.2.3, NumPy 2.1.3, Matplotlib 3.9.2, seaborn 0.13.2 |
 
-1. **Application Overview**: 전체 시스템 상태
-2. **API Performance**: 엔드포인트별 성능
-3. **Database Metrics**: PostgreSQL, Redis 상태
-4. **Error Tracking**: 에러율, 스택 트레이스
-5. **Business Metrics**: 거래량, 사용자 활동
-6. **Attack Detection**: 비정상 트래픽 감지
+## 문서
 
-## 🎓 학습 시나리오
-
-### 시나리오 1: 정상 운영 모니터링
-1. 애플리케이션 배포
-2. 합성 사용자 트래픽 생성
-3. Grafana에서 메트릭 관찰
-4. Jupyter에서 데이터 분석
-
-### 시나리오 2: 부하 테스트
-1. Locust로 점진적 부하 증가
-2. Auto-scaling 동작 관찰
-3. 병목 지점 식별
-4. 성능 최적화
-
-### 시나리오 3: 장애 시뮬레이션
-1. Pod 강제 종료
-2. 데이터베이스 연결 끊기
-3. 복구 프로세스 관찰
-4. MTTR 측정
-
-### 시나리오 4: 공격 대응
-1. DDoS 공격 시뮬레이션
-2. SQL Injection 시도
-3. Rate limiting 동작 확인
-4. 보안 메트릭 분석
-
-## 🔧 핵심 기능
-
-### 애플리케이션 기능
-- 사용자 인증/인가 (JWT)
-- 상품 CRUD
-- 이미지 업로드
-- 검색 및 필터링
-- 실시간 채팅 (WebSocket)
-- 결제 시뮬레이션
-
-### DevOps 기능
-- 자동 스케일링 (HPA)
-- 롤링 업데이트
-- 헬스 체크
-- Circuit breaker
-- Rate limiting
-- Request tracing
-
-### 모니터링 메트릭
-- **Golden Signals**: Latency, Traffic, Errors, Saturation
-- **RED Metrics**: Rate, Errors, Duration
-- **USE Metrics**: Utilization, Saturation, Errors
-- **비즈니스 메트릭**: 거래 수, 활성 사용자, 매출
-
-## 📈 데이터 분석 예제
-
-수집 가능한 데이터:
-- HTTP 요청 로그 (Nginx access logs)
-- 애플리케이션 메트릭 (Prometheus)
-- 데이터베이스 쿼리 성능
-- 에러 트레이스
-- 비즈니스 이벤트
-
-분석 예제:
-```python
-# 시간대별 트래픽 패턴 분석
-# 에러율 상관관계 분석
-# 사용자 행동 패턴
-# 성능 이상 탐지
-```
-
-## 🔐 보안 고려사항
-
-- HTTPS/TLS 암호화
-- Secret 관리 (Kubernetes Secrets)
-- RBAC (Role-Based Access Control)
-- Network Policies
-- Pod Security Standards
-- Rate limiting & DDoS protection
-
-## 📚 참고 문서
-
-- [아키텍처 상세 설명](docs/ARCHITECTURE.md)
+- [진행 기록 (최종 목표, 구현 상태, 작업 이력)](docs/PROGRESS.md)
+- [아키텍처](docs/ARCHITECTURE.md)
 - [배포 가이드](docs/DEPLOYMENT.md)
 - [모니터링 가이드](docs/MONITORING.md)
+- [검토 리포트 (2025-11-23)](docs/REVIEW.md)
 
-## 🤝 기여
+## 라이선스
 
-학습 프로젝트이므로 자유롭게 수정하고 실험하세요!
-
-## 📝 라이센스
-
-MIT License
-
----
-
-**주의**: 이 프로젝트는 학습 목적으로 만들어졌습니다. 실제 프로덕션 환경에서 사용하기 전에 추가적인 보안 강화와 최적화가 필요합니다.
+MIT License. 학습용 프로젝트이며, `k8s/base/secret.yaml`과 `app/core/config.py`의 비밀번호·키는 로컬 개발용 기본값이므로 실제 환경에서는 환경 변수로 바꿔야 합니다.
